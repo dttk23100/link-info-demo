@@ -272,13 +272,24 @@
     } catch (_) { return null; }
   }
 
+  function withTimeout(p, ms, fallback = null) {
+    return Promise.race([p, new Promise(resolve => setTimeout(() => resolve(fallback), ms))]);
+  }
+
   async function collect() {
     scanline.textContent = 'collecting client signals…';
     const canvas = getCanvasHash();
     const webgl = getWebGL();
     const fonts = getFonts();
     const [webrtc, voices, audioHash, highEntropy, mediaDevices, storage, bluetooth, battery] = await Promise.all([
-      getWebRTC(), getVoices(), getAudioHash(), getHighEntropy(), getMediaDevices(), getStorage(), getBluetooth(), getBattery()
+      getWebRTC(),
+      withTimeout(getVoices(), 2000, []),
+      withTimeout(getAudioHash(), 2000, null),
+      withTimeout(getHighEntropy(), 2000, null),
+      withTimeout(getMediaDevices(), 2000, null),
+      withTimeout(getStorage(), 2000, null),
+      withTimeout(getBluetooth(), 1200, null),
+      withTimeout(getBattery(), 1500, null),
     ]);
     const nav = navigator;
     const conn = nav.connection || nav.mozConnection || nav.webkitConnection || null;
