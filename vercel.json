@@ -1,0 +1,7 @@
+{
+  "cleanUrls": true,
+  "functions": {
+    "api/collect.js": { "maxDuration": 10 },
+    "api/latest.js": { "maxDuration": 10 }
+  }
+}
