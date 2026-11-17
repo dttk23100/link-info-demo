@@ -40,7 +40,7 @@
   <div id="empty" class="empty">No captures yet. Open the main page first.</div>
   <div class="grid" id="grid"></div>
   <details><summary style="color:var(--dim);font-size:10px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer">raw json</summary><pre id="raw">{}</pre></details>
-  <div class="fine">Standard web tracking. No name/email, no passwords, no files, no camera/mic, no exact GPS. IP geolocation is approximate.</div>
+  <div class="fine">Local-only fingerprint signals, but still no name/email, passwords, files, camera/mic, or exact GPS. IP geolocation is approximate.</div>
 </div>
 <script>
   const $ = (s) => document.querySelector(s);
@@ -79,6 +79,13 @@
         cell('browser fingerprint', c.fingerprint || '—'),
         cell('connection', c.connection ? `${c.connection.effectiveType || '?'} · ${c.connection.downlink || '?'} Mbps · ${c.connection.rtt || '?'} ms` : 'not exposed'),
         cell('battery', c.battery ? `${c.battery.level}% ${c.battery.charging ? '(charging)' : ''}` : 'not exposed'),
+        cell('installed fonts', (c.fonts || []).join(', ') || 'not exposed', true),
+        cell('local voices', (c.voices || []).map(v => `${v.name} (${v.lang})`).join(', ') || 'not exposed', true),
+        cell('audio fingerprint', c.audioHash || '—'),
+        cell('device / arch', c.highEntropy ? [c.highEntropy.architecture, c.highEntropy.bitness ? c.highEntropy.bitness + '-bit' : null, c.highEntropy.model, c.highEntropy.platformVersion].filter(Boolean).join(' · ') : 'not exposed'),
+        cell('media devices', c.mediaDevices ? `${c.mediaDevices.length} exposed (${c.mediaDevices.map(d => d.kind).join(', ')})` : 'not exposed'),
+        cell('storage quota', c.storage && c.storage.quota ? `${(c.storage.quota / 1e9).toFixed(1)} GB` : 'not exposed'),
+        cell('multi-monitor', c.screenExtended === null || c.screenExtended === undefined ? 'not exposed' : String(c.screenExtended)),
         cell('referrer', c.referrer || '—'),
       );
       $('#raw').textContent = JSON.stringify(v, null, 2);

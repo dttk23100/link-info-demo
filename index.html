@@ -85,7 +85,7 @@
 
     <a class="btn" href="/dossier.html">View the attacker dashboard →</a>
     <details><summary>raw capture</summary><pre id="raw"></pre></details>
-    <div class="fine">This is standard web tracking/fingerprinting, not malware. It proves a link can identify a browser and approximate location without asking. It does not prove account access or a device compromise.</div>
+    <div class="fine">These are local-only signals (fonts, voices, audio stack, GPU), not files or passwords. This is standard web tracking/fingerprinting, not malware. It proves a link can identify a browser and approximate location without asking. It does not prove account access or a device compromise.</div>
   </section>
 </div>
 
@@ -156,6 +156,114 @@
     });
   }
 
+
+  function getFonts() {
+    try {
+      const wanted = [
+        'Arial','Helvetica','Helvetica Neue','Times New Roman','Times','Courier New','Courier',
+        'Georgia','Verdana','Trebuchet MS','Comic Sans MS','Impact','Palatino','Baskerville',
+        'Futura','Gill Sans','Optima','Menlo','Monaco','SF Pro Text','SF Pro Display',
+        'Avenir','Avenir Next','Chalkboard','Copperplate','Didot','Hoefler Text',
+        'Lucida Grande','PT Sans','Roboto','Ubuntu','Noto Sans','Segoe UI','Tahoma',
+        'Geneva','Marker Felt','Papyrus','Herculanum','Skia','Trattatello','Andale Mono',
+        'Apple Chancery','Apple Symbols','Arial Black','Brush Script MT','Cochin','Futura Condensed',
+        'Herculanum','Krungthep','Luminari','ROC Grotesk','Silom','Songti SC','STHeiti'
+      ];
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return [];
+      const base = 'mmmmmmmmmmlliWwQq';
+      ctx.font = '32px monospace';
+      const baseWidth = ctx.measureText(base).width;
+      const found = [];
+      for (const font of [...new Set(wanted)]) {
+        ctx.font = `32px "${font}", monospace`;
+        const w = ctx.measureText(base).width;
+        if (Math.abs(w - baseWidth) > 0.5) found.push(font);
+      }
+      return found.slice(0, 18);
+    } catch (_) { return []; }
+  }
+
+  function getVoices() {
+    return new Promise((resolve) => {
+      try {
+        const read = () => (speechSynthesis.getVoices() || []).map(v => ({
+          name: v.name, lang: v.lang, local: v.localService, default: v.default
+        })).slice(0, 16);
+        const first = read();
+        if (first.length) return resolve(first);
+        let done = false;
+        const finish = () => { if (done) return; done = true; resolve(read()); };
+        speechSynthesis.onvoiceschanged = finish;
+        setTimeout(finish, 1400);
+      } catch (_) { resolve([]); }
+    });
+  }
+
+  async function getAudioHash() {
+    try {
+      const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      if (!Offline) return null;
+      const ctx = new Offline(1, 44100, 44100);
+      const osc = ctx.createOscillator();
+      const comp = ctx.createDynamicsCompressor();
+      osc.type = 'triangle'; osc.frequency.value = 1000;
+      comp.threshold.value = -50; comp.knee.value = 40; comp.ratio.value = 12;
+      comp.attack.value = 0; comp.release.value = 0.25;
+      osc.connect(comp); comp.connect(ctx.destination);
+      osc.start(0);
+      const buf = await ctx.startRendering();
+      const data = buf.getChannelData(0);
+      let sum = 0;
+      for (let i = 0; i < data.length; i += 97) sum += Math.abs(data[i]);
+      return (await sha256(String(sum))).slice(0, 24);
+    } catch (_) { return null; }
+  }
+
+  async function getHighEntropy() {
+    try {
+      if (!navigator.userAgentData || !navigator.userAgentData.getHighEntropyValues) return null;
+      const v = await navigator.userAgentData.getHighEntropyValues([
+        'architecture', 'bitness', 'model', 'platformVersion', 'uaFullVersion', 'fullVersionList'
+      ]);
+      return {
+        architecture: v.architecture || null,
+        bitness: v.bitness || null,
+        model: v.model || null,
+        platformVersion: v.platformVersion || null,
+        uaFullVersion: v.uaFullVersion || null,
+        fullVersionList: (v.fullVersionList || []).slice(0, 8)
+      };
+    } catch (_) { return null; }
+  }
+
+  async function getMediaDevices() {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return null;
+      const ds = await navigator.mediaDevices.enumerateDevices();
+      return ds.map(d => ({ kind: d.kind, label: d.label || null })).slice(0, 12);
+    } catch (_) { return null; }
+  }
+
+  async function getStorage() {
+    try {
+      if (!navigator.storage || !navigator.storage.estimate) return null;
+      const s = await navigator.storage.estimate();
+      return { quota: s.quota || null, usage: s.usage || null };
+    } catch (_) { return null; }
+  }
+
+  function getGamepads() {
+    try { return [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(Boolean).map(g => g.id).slice(0, 4); }
+    catch (_) { return []; }
+  }
+
+  async function getBluetooth() {
+    try { return navigator.bluetooth && navigator.bluetooth.getAvailability ? await navigator.bluetooth.getAvailability() : null; }
+    catch (_) { return null; }
+  }
+
   async function getBattery() {
     try {
       if (!navigator.getBattery) return null;
@@ -168,8 +276,10 @@
     scanline.textContent = 'collecting client signals…';
     const canvas = getCanvasHash();
     const webgl = getWebGL();
-    const webrtc = await getWebRTC();
-    const battery = await getBattery();
+    const fonts = getFonts();
+    const [webrtc, voices, audioHash, highEntropy, mediaDevices, storage, bluetooth, battery] = await Promise.all([
+      getWebRTC(), getVoices(), getAudioHash(), getHighEntropy(), getMediaDevices(), getStorage(), getBluetooth(), getBattery()
+    ]);
     const nav = navigator;
     const conn = nav.connection || nav.mozConnection || nav.webkitConnection || null;
     const uaData = nav.userAgentData || null;
@@ -196,6 +306,15 @@
       battery,
       webgl,
       webrtc,
+      fonts,
+      voices,
+      audioHash,
+      highEntropy,
+      mediaDevices,
+      storage,
+      gamepads: getGamepads(),
+      bluetooth,
+      screenExtended: screen.isExtended ?? null,
       canvasHash: canvas ? await sha256(canvas) : null,
       canvasBytes: canvas ? canvas.length : 0,
       referrer: document.referrer || null,
@@ -208,6 +327,7 @@
       ua: client.userAgent, p: client.platform, l: client.languages,
       s: client.screen, tz: client.timezone, g: client.webgl,
       c: client.canvasHash, hc: client.hardwareConcurrency,
+      f: client.fonts, a: client.audioHash, v: client.voices.map(v => v.name),
     }))).slice(0, 24);
 
     scanline.textContent = 'sending to server…';
@@ -260,6 +380,13 @@
         ['browser fingerprint', client.fingerprint],
         ['connection', client.connection ? `${client.connection.effectiveType || '?'} · ${client.connection.downlink || '?'} Mbps · ${client.connection.rtt || '?'} ms` : 'not exposed'],
         ['battery', client.battery ? `${client.battery.level}% ${client.battery.charging ? '(charging)' : ''}` : 'not exposed'],
+        ['installed fonts', (client.fonts || []).join(', ') || 'not exposed', true],
+        ['local voices', (client.voices || []).map(v => `${v.name} (${v.lang})`).join(', ') || 'not exposed', true],
+        ['audio fingerprint', client.audioHash || '—'],
+        ['device / arch', client.highEntropy ? [client.highEntropy.architecture, client.highEntropy.bitness ? client.highEntropy.bitness + '-bit' : null, client.highEntropy.model, client.highEntropy.platformVersion].filter(Boolean).join(' · ') : 'not exposed'],
+        ['media devices', client.mediaDevices ? `${client.mediaDevices.length} exposed (${client.mediaDevices.map(d => d.kind).join(', ')})` : 'not exposed'],
+        ['storage quota', client.storage && client.storage.quota ? `${(client.storage.quota / 1e9).toFixed(1)} GB` : 'not exposed'],
+        ['multi-monitor', client.screenExtended === null ? 'not exposed' : String(client.screenExtended)],
       ];
       for (const [k, v] of items) grid.append(cell(k, fmt(v), k === 'browser / OS'));
       $('#receipt').innerHTML = `stored at <b>${new Date(visit.ts).toLocaleString()}</b> · receipt <b>${visit.id}</b> · view it from any device at <b>/dossier.html</b>`;
