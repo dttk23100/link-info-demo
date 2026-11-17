@@ -73,12 +73,15 @@ module.exports = async (req, res) => {
     client: body.client && typeof body.client === "object" ? body.client : {},
   };
 
+  let stored = false;
+  let warning = null;
   try {
     const visits = await readGist();
     const next = [visit, ...(Array.isArray(visits) ? visits : [])].slice(0, 25);
     await writeGist(next);
-    res.status(200).json({ ok: true, id: visit.id, visit });
+    stored = true;
   } catch (e) {
-    res.status(502).json({ error: String(e.message || e) });
+    warning = String(e.message || e);
   }
+  res.status(200).json({ ok: true, stored, warning, id: visit.id, visit });
 };

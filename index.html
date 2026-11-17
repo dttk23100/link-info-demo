@@ -349,7 +349,7 @@
     });
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
-    return { client, visit: data.visit };
+    return { client, visit: data.visit, stored: data.stored, warning: data.warning };
   }
 
   function cell(k, v, wide = false) {
@@ -368,7 +368,7 @@
 
   async function render() {
     try {
-      const { client, visit } = await collect();
+      const { client, visit, stored, warning } = await collect();
       const s = visit.server || {};
       const loc = [s.city, s.region, s.country].filter(Boolean).join(', ') || 'not exposed';
       const coords = s.latitude && s.longitude ? `${s.latitude}, ${s.longitude}` : '—';
@@ -400,7 +400,9 @@
         ['multi-monitor', client.screenExtended === null ? 'not exposed' : String(client.screenExtended)],
       ];
       for (const [k, v] of items) grid.append(cell(k, fmt(v), k === 'browser / OS'));
-      $('#receipt').innerHTML = `stored at <b>${new Date(visit.ts).toLocaleString()}</b> · receipt <b>${visit.id}</b> · view it from any device at <b>/dossier.html</b>`;
+      $('#receipt').innerHTML = stored
+        ? `stored at <b>${new Date(visit.ts).toLocaleString()}</b> · receipt <b>${visit.id}</b> · view it from any device at <b>/dossier.html</b>`
+        : `captured locally · <b>not stored</b> (server storage rate-limited) · receipt <b>${visit.id}</b>`;
       $('#raw').textContent = JSON.stringify(visit, null, 2);
       $('#scan').classList.add('hidden');
       $('#result').classList.remove('hidden');
